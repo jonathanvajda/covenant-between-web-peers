@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate-query-whom:
+  validate-peer-chat:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,29 +30,22 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: docs/query-whom/package-lock.json
+          cache-dependency-path: package-lock.json
       - name: Install fixed development dependencies
         run: npm ci --ignore-scripts
-        working-directory: docs/query-whom
-      - name: Validate generated RDF and offline assets
+      - name: Validate offline assets and module syntax
         run: npm run check
-        working-directory: docs/query-whom
-      - name: Test Query Whom and shared engine
-        run: |
-          npm test --prefix docs/query-whom
-          npm test --prefix docs/packages/game-mechanics
+      - name: Test cryptography and transport
+        run: npm test
       - name: Audit fixed dependencies
         run: npm audit --audit-level=high
-        working-directory: docs/query-whom
-      - name: Install browser for accessibility and offline checks
+      - name: Install browser for peer chat and offline checks
         run: npx playwright install --with-deps chromium
-        working-directory: docs/query-whom
-      - name: Test browser gameplay and accessibility
+      - name: Test browser connection, chat, QR and offline support
         run: npm run test:browser
-        working-directory: docs/query-whom
   # Single deploy job since we're just deploying
   deploy:
-    needs: validate-query-whom
+    needs: validate-peer-chat
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#153d36">
+    <meta name="description" content="Connect two browsers with encrypted links and chat directly, without a signaling server.">
+    <meta name="referrer" content="no-referrer">
+    <title>Covenant · Peer chat</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
+    <link rel="stylesheet" href="./css/styles.css">
+    <script defer src="./js/vendor/qrcode.min.js"></script>
+    <script defer src="./js/vendor/html5-qrcode.min.js"></script>
+    <script type="module" src="./js/app.js"></script>
+</head>
+<body>
+    <header class="site-header"><a class="brand" href="./">Covenant<span>between web peers</span></a><span class="badge" id="connection-status" role="status">Ready to connect</span></header>
+    <main>
+        <section class="intro"><p class="eyebrow">One connection. Two browsers.</p><h1>A conversation,<br>directly between you.</h1><p>Exchange encrypted connection links, then chat over a direct peer connection. No accounts, matchmaking server, or stored conversations.</p></section>
+        <p id="notice" class="notice" role="status" hidden></p>
+        <p id="error" class="error" role="alert" hidden></p>
+        <div class="workspace">
+            <section class="panel" aria-labelledby="connect-heading">
+                <div class="panel-heading"><h2 id="connect-heading">01 / Connect</h2><button class="quiet" id="reset" type="button">Start over</button></div>
+                <label for="display-name">Your display name</label><input id="display-name" maxlength="48" autocomplete="nickname" placeholder="Peer" value="Peer">
+                <label for="room-pass">Shared passphrase</label><input id="room-pass" type="password" autocomplete="off" aria-describedby="pass-help" placeholder="Agree on a secret with your peer">
+                <p class="hint" id="pass-help">Use the same strong passphrase on both devices. Share it separately from the connection link.</p>
+                <div class="actions"><button id="host" type="button">Open channel</button><button id="join" class="secondary" type="button">Join channel</button></div>
+                <div id="incoming-panel">
+                    <label for="incoming">Received link or token</label><textarea id="incoming" rows="3" spellcheck="false" autocomplete="off" placeholder="Paste an invitation, or paste the reply here in the host's original tab"></textarea>
+                    <div class="actions"><button id="process" class="secondary" type="button">Use received link</button><button id="scan" class="quiet" type="button">Scan QR code</button></div>
+                </div>
+                <p class="instruction" id="instructions">One person opens a channel. The other joins using the invitation and returns a reply.</p>
+                <p class="hint">Keep both tabs open during the exchange and conversation. A reply must be pasted or scanned into the original host tab; opening it in a new tab cannot restore that connection.</p>
+                <div id="share-panel" hidden><h3 id="share-title">Your invitation</h3><label for="outgoing">Encrypted connection link</label><textarea id="outgoing" readonly rows="3" spellcheck="false"></textarea><div class="actions"><button id="copy" type="button">Copy link</button><button id="show-qr" class="secondary" type="button">Enlarge QR</button></div><div id="share-qr" aria-label="Encrypted connection QR code"></div><p id="share-qr-error" class="hint" hidden></p><p class="hint">Links expire after 30 minutes. The passphrase is never included.</p></div>
+            </section>
+            <section class="panel chat-panel" id="chat" aria-labelledby="chat-heading">
+                <div class="panel-heading"><h2 id="chat-heading">02 / Conversation</h2><span class="small-label">Browser to browser</span></div>
+                <div class="chat-note">Messages stay in these tabs. Closing or reloading clears this device's conversation.</div>
+                <div id="chat-messages" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
+                <form id="chat-form"><label for="chat-input">Message</label><div class="composer"><input id="chat-input" maxlength="2000" placeholder="Connect to start chatting" autocomplete="off" disabled><button type="submit" disabled>Send</button></div></form>
+            </section>
+        </div>
+        <section class="network-note"><h2>A small bridge, without a backend.</h2><p>The website serves the app; public STUN helps discover network routes. Handshakes are encrypted with your passphrase, and WebRTC encrypts the live channel. Some firewalls and NAT configurations block direct connections. This app has no TURN relay; if a connection fails, try another network.</p><p id="offline-status" class="hint">Offline support will be prepared after your first visit. Internet connections still need network access.</p><button id="install" class="quiet" type="button" hidden>Install app</button></section>
+    </main>
+    <footer>Covenant / First implementation: peer chat</footer>
+    <dialog id="qr-dialog" aria-labelledby="qr-title"><div class="panel-heading"><h2 id="qr-title">Scan this connection</h2><button id="close-qr" class="quiet" type="button">Close</button></div><p>Scan on the other device, then enter your shared passphrase.</p><div id="qr-code" aria-label="Encrypted connection QR code"></div><p id="qr-error" class="hint" hidden></p></dialog>
+    <dialog id="scanner-dialog" aria-labelledby="scanner-title"><div class="panel-heading"><h2 id="scanner-title">Scan a received link</h2><button id="close-scanner" class="quiet" type="button">Close</button></div><p>Allow camera access, then point at the other device's QR code.</p><div id="qr-reader"></div><p id="scanner-error" class="error" role="alert" hidden></p></dialog>
+    <noscript><p class="error">Enable JavaScript to establish a peer connection.</p></noscript>
+</body>
+</html>

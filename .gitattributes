@@ -1,0 +1,2 @@
+# Preserve vendor bytes for the recorded SHA-256 hashes on Windows and Linux.
+docs/js/vendor/*.min.js -text

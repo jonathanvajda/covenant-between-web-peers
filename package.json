@@ -1,0 +1,14 @@
+{
+  "name": "covenant-between-web-peers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/core.test.mjs",
+    "test:browser": "playwright test",
+    "check": "node tests/check-assets.mjs",
+    "serve": "node tests/static-server.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}

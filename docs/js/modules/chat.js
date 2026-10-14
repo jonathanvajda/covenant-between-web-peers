@@ -1,45 +1,46 @@
-// js/modules/chat.js
-export function initChatModule(rtcManager, uiContainer) {
-    uiContainer.innerHTML = `
-        <div id="chat-messages" style="height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;"></div>
-        <input type="text" id="chat-input" placeholder="Type a message..." style="width: 75%; padding: 8px;" />
-        <button id="chat-send" style="width: 20%; padding: 8px;">Send</button>
-    `;
-
-    const messagesEl = document.getElementById('chat-messages');
-    const inputEl = document.getElementById('chat-input');
-    const sendBtn = document.getElementById('chat-send');
-
-    const appendMessage = (sender, timestamp, body) => {
-        const div = document.createElement('div');
-        div.style.margin = "6px 0";
-        div.innerHTML = `<strong>${sender}</strong> <span style="font-size: 0.8em; color: #666;">[${new Date(timestamp).toLocaleTimeString()}]</span>: ${body}`;
-        messagesEl.appendChild(div);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+export function createChatModule(container, { getSender, onError }) {
+    const history = container.querySelector('#chat-messages');
+    const input = container.querySelector('#chat-input');
+    const form = container.querySelector('form');
+    const button = container.querySelector('button');
+    let send;
+    const append = (sender, timestamp, body, local = false) => {
+        const article = document.createElement('article');
+        article.className = `message${local ? ' mine' : ''}`;
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+        const author = document.createElement('strong');
+        author.textContent = local ? `${sender} (you)` : sender;
+        const time = document.createElement('time');
+        time.dateTime = new Date(timestamp).toISOString();
+        time.textContent = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const text = document.createElement('p');
+        text.textContent = body;
+        meta.append(author, time); article.append(meta, text); history.append(article);
+        while (history.children.length > 300) history.firstElementChild.remove();
+        history.scrollTop = history.scrollHeight;
     };
-
-    sendBtn.onclick = () => {
-        const text = inputEl.value.trim();
-        if (!text) return;
-        
-        const payload = {
-            module: 'chat',
-            sender: 'Peer_' + Math.floor(Math.random() * 1000),
-            timestamp: Date.now(),
-            body: text
-        };
-
-        rtcManager.send(payload);
-        appendMessage("You", payload.timestamp, payload.body);
-        inputEl.value = '';
+    const submit = event => {
+        event.preventDefault();
+        const body = input.value.trim();
+        if (!body) return;
+        const payload = { sender: getSender().trim().slice(0, 48) || 'Peer', timestamp: Date.now(), body };
+        try { send(payload); append(payload.sender, payload.timestamp, body, true); input.value = ''; input.focus(); }
+        catch (error) { onError(error.message); }
     };
-
-    // Return message handler for incoming network packets
     return {
-        onMessage: (data) => {
-            if (data.module === 'chat') {
-                appendMessage(data.sender, data.timestamp, data.body);
+        id: 'chat',
+        init(context) { send = context.send; form.addEventListener('submit', submit); },
+        onConnectionChange(connected) { input.disabled = button.disabled = !connected; },
+        onMessage(data) {
+            if (typeof data.sender !== 'string' || data.sender.length > 48 ||
+                typeof data.body !== 'string' || !data.body.trim() || data.body.length > 2000 ||
+                !Number.isFinite(data.timestamp) || Math.abs(data.timestamp) > 8640000000000000) {
+                onError('Ignored an invalid chat message.'); return;
             }
-        }
+            append(data.sender, data.timestamp, data.body);
+        },
+        clear() { history.replaceChildren(); input.value = ''; },
+        destroy() { form.removeEventListener('submit', submit); }
     };
 }
