@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'covenant-peer-chat-';
-const CACHE = `${CACHE_PREFIX}v1`;
+const CACHE = `${CACHE_PREFIX}v2`;
 const ASSETS = ['./', './index.html', './manifest.json', './css/styles.css', './js/app.js',
     './js/core/crypto.js', './js/core/rtc-manager.js', './js/core/module-registry.js', './js/core/bridge.js',
     './js/modules/chat.js', './js/vendor/qrcode.min.js', './js/vendor/html5-qrcode.min.js',

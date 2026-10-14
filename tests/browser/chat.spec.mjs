@@ -159,7 +159,7 @@ test('offline shell works at a GitHub Pages subpath without saving conversation 
         if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
     });
     const cached = await page.evaluate(async () => {
-        const cache = await caches.open('covenant-peer-chat-v1'); return (await cache.keys()).map(request => request.url);
+        const cache = await caches.open('covenant-peer-chat-v2'); return (await cache.keys()).map(request => request.url);
     });
     expect(cached.length).toBe(15); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
     await context.setOffline(true); await page.reload();
@@ -176,4 +176,33 @@ test('touch layout fits a narrow phone viewport and send starts disabled', async
     await expect(page.locator('#chat-input')).toBeDisabled();
     await expect(page.locator('#chat-form button')).toBeDisabled();
     await page.locator('#host').click(); await expect(page.locator('#error')).toContainText('passphrase');
+});
+
+test('same-network mode connects real peers without contacting STUN', async ({ browser }) => {
+    const a = await browser.newContext(); const b = await browser.newContext();
+    // Observe configuration while leaving native WebRTC and gathering unchanged.
+    for (const context of [a, b]) await context.addInitScript(() => {
+        const NativePeer = window.RTCPeerConnection;
+        window.RTCPeerConnection = class extends NativePeer {
+            constructor(config) { super(config); window.usedIceServers = config.iceServers; }
+        };
+    });
+    try {
+        const alice = await a.newPage(); const bob = await b.newPage();
+        await alice.goto('./'); await alice.locator('#network-mode').selectOption('local');
+        await alice.locator('#room-pass').fill(secret); await alice.locator('#host').click();
+        await expect(alice.locator('#outgoing')).toHaveValue(/#offer=/);
+        const invitation = await alice.locator('#outgoing').inputValue();
+        await bob.goto(invitation); await bob.locator('#network-mode').selectOption('local');
+        await bob.locator('#room-pass').fill(secret); await bob.locator('#process').click();
+        await expect(bob.locator('#outgoing')).toHaveValue(/#answer=/);
+        await alice.locator('#incoming').fill(await bob.locator('#outgoing').inputValue());
+        await alice.locator('#process').click();
+        await expect(alice.locator('#chat-input')).toBeEnabled({ timeout: 15000 });
+        await expect(bob.locator('#chat-input')).toBeEnabled({ timeout: 15000 });
+        expect(await alice.evaluate(() => window.usedIceServers)).toEqual([]);
+        expect(await bob.evaluate(() => window.usedIceServers)).toEqual([]);
+        await alice.locator('#chat-input').fill('LAN connection works'); await alice.locator('#chat-form button').click();
+        await expect(bob.locator('.message')).toContainText('LAN connection works');
+    } finally { await a.close(); await b.close(); }
 });

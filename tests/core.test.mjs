@@ -66,10 +66,11 @@ class FakeChannel {
 }
 class FakePeer extends EventTarget {
     static gathering = 'complete';
+    static candidates = true;
     constructor() { super(); this.iceGatheringState = FakePeer.gathering; this.iceConnectionState = 'new'; this.signalingState = 'stable'; }
     createDataChannel() { return new FakeChannel(); }
-    async createOffer() { return { type: 'offer', sdp: 'v=0\r\na=candidate:complete' }; }
-    async createAnswer() { return { type: 'answer', sdp: 'v=0\r\na=candidate:complete' }; }
+    async createOffer() { return { type: 'offer', sdp: 'v=0\r\n' + (FakePeer.candidates ? 'a=candidate:1 1 udp 1 local.local 12345 typ host\r\n' : '') }; }
+    async createAnswer() { return { type: 'answer', sdp: 'v=0\r\n' + (FakePeer.candidates ? 'a=candidate:1 1 udp 1 local.local 12345 typ host\r\n' : '') }; }
     async setLocalDescription(sdp) { this.localDescription = sdp; this.signalingState = sdp.type === 'offer' ? 'have-local-offer' : 'stable'; }
     async setRemoteDescription(sdp) { this.remoteDescription = sdp; this.signalingState = sdp.type === 'offer' ? 'have-remote-offer' : 'stable'; }
     close() { this.closed = true; }
@@ -100,11 +101,41 @@ test('ICE completion events resolve and close cancels an in-flight gather', asyn
         rtc.close(); await assert.rejects(canceled, /closed/);
     } finally { FakePeer.gathering = 'complete'; rtc.close(); }
 });
-test('ICE timeout fails rather than publishing an incomplete offer', async () => {
+test('ICE timeout with local candidates preserves the connection and warns about limited routes', async () => {
     FakePeer.gathering = 'gathering';
     const rtc = new RTCManager({ gatherTimeout: 10 });
-    try { await assert.rejects(rtc.createHostOffer(), /timed out/); }
+    let warning;
+    rtc.addEventListener('warning', event => { warning = event.detail; });
+    try {
+        const payload = await rtc.createHostOffer();
+        assert.match(payload.sdp.sdp, /typ host/);
+        assert.equal(rtc.pc.closed, undefined);
+        assert.equal(rtc.gatheringComplete, false);
+        assert.match(warning, /local routes/);
+    }
     finally { FakePeer.gathering = 'complete'; rtc.close(); }
+});
+test('ICE timeout without candidates fails with actionable VPN and permission guidance', async () => {
+    FakePeer.gathering = 'gathering'; FakePeer.candidates = false;
+    const rtc = new RTCManager({ gatherTimeout: 10 });
+    try { await assert.rejects(rtc.createHostOffer(), /No network routes.*VPN/); }
+    finally { FakePeer.gathering = 'complete'; FakePeer.candidates = true; rtc.close(); }
+});
+test('ICE complete without candidates also fails, and individual STUN errors do not abort gathering', async () => {
+    FakePeer.candidates = false;
+    const rtc = new RTCManager();
+    try { await assert.rejects(rtc.createHostOffer(), /No network routes/); }
+    finally { FakePeer.candidates = true; rtc.close(); }
+    FakePeer.gathering = 'gathering';
+    try {
+        const pending = rtc.createHostOffer();
+        await new Promise(resolve => setImmediate(resolve));
+        rtc.pc.onicecandidateerror({ errorCode: 701, url: 'stun:example.com:19302' });
+        rtc.pc.iceGatheringState = 'complete'; rtc.pc.dispatchEvent(new Event('icegatheringstatechange'));
+        assert.equal((await pending).type, 'offer');
+        assert.equal(rtc.iceErrors[0].code, 701);
+        assert.equal(rtc.gatheringComplete, true);
+    } finally { FakePeer.gathering = 'complete'; rtc.close(); }
 });
 test('joiner preserves session and accepts only the expected data channel', async () => {
     const rtc = new RTCManager();

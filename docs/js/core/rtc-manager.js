@@ -14,7 +14,7 @@ export function validateHandshake(payload, type) {
 }
 
 export class RTCManager extends EventTarget {
-    constructor({ iceServers = [{ urls: 'stun:stun.l.google.com:19302' }], gatherTimeout = 20000 } = {}) {
+    constructor({ iceServers = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], gatherTimeout = 20000 } = {}) {
         super();
         this.config = { iceServers };
         this.gatherTimeout = gatherTimeout;
@@ -22,6 +22,8 @@ export class RTCManager extends EventTarget {
         this.dataChannel = null;
         this.session = null;
         this.cancelGather = null;
+        this.gatheringComplete = false;
+        this.iceErrors = [];
     }
     emit(type, detail) { this.dispatchEvent(new CustomEvent(type, { detail })); }
     status(state) { this.emit('status', state); }
@@ -29,6 +31,12 @@ export class RTCManager extends EventTarget {
     initPeerConnection() {
         this.close();
         const pc = this.pc = new RTCPeerConnection(this.config);
+        this.gatheringComplete = false;
+        this.iceErrors = [];
+        // One interface/server may fail while another succeeds; never abort on this event.
+        pc.onicecandidateerror = event => {
+            this.iceErrors.push({ code: event.errorCode, url: event.url });
+        };
         pc.oniceconnectionstatechange = () => {
             this.status(pc.iceConnectionState);
             if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) this.emit('disconnected', pc.iceConnectionState);
@@ -65,13 +73,25 @@ export class RTCManager extends EventTarget {
                     error ? reject(error) : resolve();
                 };
                 const check = () => { if (pc.iceGatheringState === 'complete') finish(); };
-                const timer = setTimeout(() => finish(new Error('ICE gathering timed out. Check your network and try again.')), this.gatherTimeout);
+                const timer = setTimeout(() => {
+                    if (/^a=candidate:/m.test(pc.localDescription?.sdp || '')) finish();
+                    else finish(new Error('No network routes were gathered. Allow local-network access in your browser and check whether your VPN permits LAN traffic, then try again.'));
+                }, this.gatherTimeout);
                 this.cancelGather = () => finish(new Error('Connection closed.'));
                 pc.addEventListener('icegatheringstatechange', check);
                 check();
             });
         }
         if (pc !== this.pc) throw new Error('Connection closed.');
+        this.gatheringComplete = pc.iceGatheringState === 'complete';
+        if (!/^a=candidate:/m.test(pc.localDescription?.sdp || ''))
+            throw new Error('No network routes were gathered. Allow local-network access in your browser and check whether your VPN permits LAN traffic, then try again.');
+        if (!this.gatheringComplete) {
+            const publicRoute = /\btyp (srflx|relay)\b/.test(pc.localDescription.sdp);
+            this.emit('warning', publicRoute
+                ? 'Some route discovery requests timed out. This link includes the routes found so far; exchange it to try connecting.'
+                : 'Public route discovery timed out. This link includes local routes; try it with your peer on the same Wi-Fi. A VPN may still block local traffic.');
+        }
         return { version: 1, session: this.session, createdAt: Date.now(), type: pc.localDescription.type,
             sdp: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } };
     }
@@ -111,7 +131,7 @@ export class RTCManager extends EventTarget {
             this.dataChannel.onopen = this.dataChannel.onclose = this.dataChannel.onmessage = this.dataChannel.onerror = null;
             this.dataChannel.close();
         }
-        if (this.pc) { this.pc.oniceconnectionstatechange = this.pc.ondatachannel = null; this.pc.close(); }
+        if (this.pc) { this.pc.oniceconnectionstatechange = this.pc.ondatachannel = this.pc.onicecandidateerror = null; this.pc.close(); }
         this.pc = this.dataChannel = this.session = null;
         this.status('closed'); this.emit('disconnected', 'closed');
     }

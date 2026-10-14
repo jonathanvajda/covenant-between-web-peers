@@ -26,6 +26,7 @@ function controls() {
     $('host').disabled ||= !!role;
     $('join').disabled ||= !!role;
     $('room-pass').disabled = busy || !!role;
+    $('network-mode').disabled = busy || !!role;
     $('reset').disabled = busy;
 }
 function waitForConnection() {
@@ -49,6 +50,12 @@ rtc.addEventListener('disconnected', () => {
     if (role) notice('The connection was interrupted. Wait briefly for recovery, or start over on both devices to exchange fresh links.');
 });
 rtc.addEventListener('error', ({ detail }) => error(detail));
+rtc.addEventListener('warning', ({ detail }) => notice(detail));
+
+function configureNetwork() {
+    rtc.config = { iceServers: $('network-mode').value === 'local' ? []
+        : [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] };
+}
 
 async function run(action) {
     if (busy || !supported) return;
@@ -87,6 +94,7 @@ async function receive() {
     if (payload.type === 'offer') {
         if (role) throw new Error('A connection is already active. Start over before joining a different channel.');
         validateHandshake(payload, 'offer');
+        configureNetwork();
         const answer = await rtc.createJoinAnswer(payload);
         const token = await encryptPayload(secret, answer);
         role = 'joiner'; showShare('answer', token);
@@ -99,6 +107,7 @@ async function receive() {
 }
 $('host').addEventListener('click', () => run(async () => {
     const secret = passphrase();
+    configureNetwork();
     const offer = await rtc.createHostOffer();
     const token = await encryptPayload(secret, offer);
     chat.clear(); role = 'host'; showShare('offer', token);
@@ -217,7 +226,14 @@ if (supported && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(async registration => {
         await navigator.serviceWorker.ready;
         $('offline-status').textContent = 'App assets are ready for offline use. New connections across the internet still need network access.';
-        if (registration.waiting) notice('An app update is ready. Reload after your conversation to use it.');
+        const updateNotice = () => notice('An app update is ready. After your conversation, close all app tabs and reopen to use it.');
+        if (registration.waiting) updateNotice();
+        registration.addEventListener('updatefound', () => {
+            const worker = registration.installing;
+            worker?.addEventListener('statechange', () => {
+                if (worker.state === 'installed' && navigator.serviceWorker.controller) updateNotice();
+            });
+        });
     }).catch(() => { $('offline-status').textContent = 'Offline caching is unavailable in this browser. The app can still work while online.'; });
 }
 let installPrompt;

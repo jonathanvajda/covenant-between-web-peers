@@ -24,6 +24,8 @@
         <div class="workspace">
             <section class="panel" aria-labelledby="connect-heading">
                 <div class="panel-heading"><h2 id="connect-heading">01 / Connect</h2><button class="quiet" id="reset" type="button">Start over</button></div>
+                <label for="network-mode">Network path</label><select id="network-mode" aria-describedby="network-help"><option value="internet">Internet / different networks</option><option value="local">Same network / Wi-Fi (skip STUN)</option></select>
+                <p id="network-help" class="hint">For two devices on the same Wi-Fi, select Same network on both. A VPN must allow access to local devices.</p>
                 <label for="display-name">Your display name</label><input id="display-name" maxlength="48" autocomplete="nickname" placeholder="Peer" value="Peer">
                 <label for="room-pass">Shared passphrase</label><input id="room-pass" type="password" autocomplete="off" aria-describedby="pass-help" placeholder="Agree on a secret with your peer">
                 <p class="hint" id="pass-help">Use the same strong passphrase on both devices. Share it separately from the connection link.</p>
