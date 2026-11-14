@@ -143,7 +143,7 @@ test('plain-text native share, clipboard fallbacks, paste processing, and bare-t
     } finally { await context.close(); }
 });
 
-test('imports an actual QR screenshot as a code without camera access', async ({ browser }) => {
+test('imports an actual QR screenshot as a code without camera access', async ({ browser }, testInfo) => {
     const context = await browser.newContext();
     try {
         const host = await context.newPage(); const client = await context.newPage();
@@ -152,8 +152,14 @@ test('imports an actual QR screenshot as a code without camera access', async ({
         await host.locator('#enlarge-room-qr').click();
         await expect(host.locator('#room-large-qr canvas')).toBeVisible();
         const image = await host.locator('#room-large-qr canvas').evaluate(canvas => canvas.toDataURL().split(',')[1]);
+        await testInfo.attach('invitation-qr.png', { body: Buffer.from(image, 'base64'), contentType: 'image/png' });
         await client.goto('./star-mesh.html');
         await client.locator('#room-qr-file').setInputFiles({ name: 'invitation.png', mimeType: 'image/png', buffer: Buffer.from(image, 'base64') });
+        await expect.poll(async () => {
+            if (await client.locator('#room-error').isVisible()) return 'failed';
+            return await client.locator('#room-incoming').inputValue() ? 'decoded' : 'pending';
+        }).not.toBe('pending');
+        expect(await client.locator('#room-error').innerText()).toBe('');
         await expect(client.locator('#room-incoming')).toHaveValue(code, { timeout: 15000 });
         await expect(client.locator('#room-progress')).toContainText('Code received');
         await expect(client.locator('#room-scanner')).not.toBeVisible();

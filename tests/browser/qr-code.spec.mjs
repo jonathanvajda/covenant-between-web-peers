@@ -1,0 +1,42 @@
+import { test, expect } from '@playwright/test';
+
+test('decodes a reproducible corpus of dense QR patterns', async ({ page }) => {
+    await page.goto('./star-mesh.html');
+    const failures = await page.evaluate(async () => {
+        const { createQRCodeCanvas, decodeQRCodeImage } = await import('./js/core/qr-code.js');
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+        const failures = [];
+        for (let seed = 1; seed <= 12; seed++) {
+            const length = seed % 2 ? 1000 : 2000;
+            let state = seed; let text = 'offer=';
+            for (let index = 0; index < length; index++) {
+                state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+                text += alphabet[state >>> 26];
+            }
+            for (const width of [280, 640]) {
+                const canvas = createQRCodeCanvas(text, width);
+                const blob = await new Promise(resolve => canvas.toBlob(resolve));
+                try {
+                    const decoded = await decodeQRCodeImage(new File([blob], 'pattern.png', { type: 'image/png' }));
+                    if (decoded !== text) failures.push({ seed, length, width, error: 'Decoded different text' });
+                } catch (error) { failures.push({ seed, length, width, error: String(error) }); }
+            }
+        }
+        return failures;
+    });
+    expect(failures).toEqual([]);
+});
+
+test('unreadable images produce actionable errors and release temporary DOM resources', async ({ page }) => {
+    await page.goto('./star-mesh.html');
+    const message = await page.evaluate(async () => {
+        const { decodeQRCodeImage } = await import('./js/core/qr-code.js');
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 100;
+        const drawing = canvas.getContext('2d'); drawing.fillStyle = 'white'; drawing.fillRect(0, 0, 100, 100);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve));
+        try { await decodeQRCodeImage(new File([blob], 'blank.png', { type: 'image/png' })); }
+        catch (error) { return error.message; }
+    });
+    expect(message).toContain('paste/load the text code instead');
+    await expect(page.locator('[id^="qr-image-"]')).toHaveCount(0);
+});

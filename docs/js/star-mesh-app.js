@@ -4,32 +4,18 @@ import { RTCManager } from './core/rtc-manager.js';
 import { encryptPayload, decryptPayload, MAX_TOKEN_LENGTH } from './core/crypto.js';
 import { makeHandshakeLink } from './core/bridge.js';
 import { parseRoomExchangeText, formatRoomExchangeCode, identifyRoomExchangeType } from './network/exchange.js';
+import { createQRCodeCanvas, decodeQRCodeImage } from './core/qr-code.js';
 
 const element = id => document.getElementById(id);
 let room;
 let scanner;
 let busy = false;
 let outgoingExchange;
-const showError = error => { element('room-error').textContent = error.message; element('room-error').hidden = false; };
+const showError = error => {
+    element('room-error').textContent = error?.message || String(error || 'Unable to complete this action.');
+    element('room-error').hidden = false;
+};
 const showProgress = text => { element('room-progress').textContent = text; };
-
-/** Draw the bundled QR encoder's matrix with whole pixels and a four-module quiet zone. */
-function createRoomCodeCanvas(text, pixels = 280) {
-    const qr = globalThis.qrcode(0, 'L'); qr.addData(text, 'Byte'); qr.make();
-    const count = qr.getModuleCount();
-    const border = 4; const cell = Math.max(2, Math.floor(pixels / (count + border * 2)));
-    const canvas = document.createElement('canvas'); canvas.width = canvas.height = (count + border * 2) * cell;
-    const drawing = canvas.getContext('2d');
-    drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, canvas.width, canvas.height);
-    drawing.fillStyle = '#000';
-    for (let row = 0; row < count; row++) {
-        for (let column = 0; column < count; column++) {
-            if (qr.isDark(row, column)) drawing.fillRect((column + border) * cell, (row + border) * cell, cell, cell);
-        }
-    }
-    canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', 'Room code QR. The same code is available as text.');
-    return canvas;
-}
 
 /** Erase consumed signaling data while leaving the current room alive. */
 function clearOutgoingExchange() {
@@ -103,7 +89,7 @@ async function displayEncryptedExchange(type, payload) {
     element('room-share-title').textContent = type === 'offer' ? 'Send this invitation code to one peer' : 'Send this response code back to the host';
     element('room-qr').replaceChildren();
     try {
-        element('room-qr').append(createRoomCodeCanvas(code));
+        element('room-qr').append(createQRCodeCanvas(code));
         element('room-qr-note').textContent = 'QR contains the same code, without a URL. Share the passphrase separately.';
     } catch {
         element('room-qr').replaceChildren(); element('room-qr-note').textContent = 'This code is too large for one QR. Copy, share, or save the code file instead.';
@@ -237,14 +223,12 @@ element('room-qr-file').onchange = () => runRoomOperation(async () => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) throw new Error('Choose a QR image smaller than 10 MB.');
     await closeRoomScanner();
-    const reader = new Html5Qrcode('room-reader');
-    try { await receiveExchangeText(await reader.scanFile(file, false)); }
-    finally { reader.clear(); }
+    await receiveExchangeText(await decodeQRCodeImage(file));
 });
 element('enlarge-room-qr').onclick = () => runRoomOperation(() => {
     if (!outgoingExchange) return;
     element('room-large-qr').replaceChildren();
-    try { element('room-large-qr').append(createRoomCodeCanvas(outgoingExchange.code, 640)); }
+    try { element('room-large-qr').append(createQRCodeCanvas(outgoingExchange.code, 640)); }
     catch { throw new Error('Code is too large for a QR. Copy, share, or save it as a file.'); }
     element('room-qr-dialog').showModal();
 });

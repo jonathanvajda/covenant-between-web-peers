@@ -48,6 +48,14 @@ npm run test:browser
 
 Browser tests exercise real WebRTC between isolated Chromium contexts with STUN disabled for deterministic host-candidate local tests. They cover both directions of chat, text injection, reset/disconnect, wrong passphrase recovery, reply-in-new-tab guidance, QR encode/decode, synthetic camera scanning and track cleanup, camera denial, clipboard denial, oversized QR fallback, offline subpath caching, and a narrow viewport. Actual camera permission/scanning on iOS/Android, installation, and WAN traversal need device checks. GitHub Actions runs checks before uploading `docs/` to Pages; changes here are not published until committed and pushed.
 
+Before pushing, run `npm run test:ci`. This runs asset checks, unit tests, the dependency audit at CI's high-severity threshold, the full browser suite, and ten fresh encrypted QR exchanges without test retries. `npm run test:browser:stress` runs only that repeated check. The browser suite also exercises 24 deterministic QR patterns at two pixel scales, so regressions do not depend solely on random encrypted data. CI validates pull requests before merging; only non-PR runs deploy.
+
+The shared `.nvmrc` selects Node 24 for version managers and GitHub Actions. Switch to that version before installing dependencies when checking CI parity.
+
+A single passing browser run cannot rule out a payload-dependent failure. QR image import uses bounded nearest-neighbor resampling with white padding when the bundled decoder misses a dense pattern. Repeated tests exercise different encrypted payloads; the fixed corpus supplies reproducible cases. Neither test repetition nor CI parity guarantees all real-device combinations.
+
+Browser failures retain Playwright traces, screenshots, the generated QR PNG, and an HTML report. In GitHub Actions download the `browser-failure-diagnostics` artifact (retained seven days). Locally run `npx playwright show-report` or `npx playwright show-trace <path-to-trace.zip>`. QR attachments contain ephemeral test connection data; do not use real room secrets in automated tests. Linux CI remains authoritative when developing on Windows; use Node 24, `npm ci --ignore-scripts`, and the pinned Playwright browser version to reduce environment differences.
+
 ## Extend
 
 `RTCManager` emits `status`, `connected`, `disconnected`, `message`, and `error` events and exposes `send()` and `close()`. `ModuleRegistry.registerModule({ id, init, onMessage, onConnectionChange, destroy })` supplies `{ send, connected }` to `init`. The registry adds the module id to each outgoing envelope and routes incoming messages to the matching consumer. `send` is also assigned on the module; modules validate their own message bodies. The chat module is the first consumer. Future game modules can reuse this transport; adding audio would also require a media-track API and negotiation support.
