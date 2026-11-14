@@ -3,6 +3,7 @@ import { RTCManager, validateHandshake } from './core/rtc-manager.js';
 import { ModuleRegistry } from './core/module-registry.js';
 import { parseHandshakeInput, makeHandshakeLink } from './core/bridge.js';
 import { createChatModule } from './modules/chat.js';
+import { createQRCodeCanvas as createQR, startQRCodeVideoFallback } from './core/qr-code.js';
 
 const $ = id => document.getElementById(id);
 const rtc = new RTCManager();
@@ -17,6 +18,7 @@ let role = null;
 let scanner = null;
 let scannerStart = null;
 let stopScannerPromise = null;
+let stopScannerFallback = null;
 let connectionTimer = null;
 const labels = { closed: 'Ready to connect', new: 'Preparing connection', gathering: 'Gathering network routes',
     checking: 'Connecting to peer', connected: 'Connected', completed: 'Connected', disconnected: 'Disconnected', failed: 'Connection failed' };
@@ -128,28 +130,12 @@ $('copy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('outgoing').value); notice('Link copied. Send it to your peer using your preferred messaging app.'); }
     catch { $('outgoing').focus(); $('outgoing').select(); notice('Clipboard access is unavailable. Copy the selected link manually.'); }
 });
-function createQR(text) {
-    const qr = window.qrcode(0, 'L');
-    qr.addData(text, 'Byte'); qr.make();
-    const count = qr.getModuleCount();
-    const cell = 4;
-    const border = 4;
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = (count + border * 2) * cell;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#000';
-    for (let row = 0; row < count; row++) for (let col = 0; col < count; col++) {
-        if (qr.isDark(row, col)) ctx.fillRect((col + border) * cell, (row + border) * cell, cell, cell);
-    }
-    return canvas;
-}
 $('show-qr').addEventListener('click', () => {
     $('qr-code').replaceChildren(); $('qr-error').hidden = true;
     $('qr-title').textContent = role === 'host' ? 'Scan this invitation' : 'Scan this reply';
     $('qr-dialog').showModal();
     try {
-        $('qr-code').append(createQR($('outgoing').value));
+        $('qr-code').append(createQR($('outgoing').value, 640));
     } catch {
         $('qr-code').replaceChildren(); $('qr-error').hidden = false;
         $('qr-error').textContent = 'This connection link is too large for a single QR code. Close this dialog and use Copy link instead.';
@@ -158,6 +144,7 @@ $('show-qr').addEventListener('click', () => {
 $('close-qr').addEventListener('click', () => $('qr-dialog').close());
 
 async function stopScanner() {
+    stopScannerFallback?.(); stopScannerFallback = null;
     if (stopScannerPromise) return stopScannerPromise;
     stopScannerPromise = (async () => {
         try {
@@ -178,7 +165,7 @@ $('scan').addEventListener('click', async () => {
         if (!navigator.mediaDevices?.getUserMedia || !window.Html5Qrcode) throw new Error('Camera scanning is unavailable. Paste the link instead.');
         scanner = new window.Html5Qrcode('qr-reader', { formatsToSupport: [window.Html5QrcodeSupportedFormats.QR_CODE], verbose: false });
         let captured = false;
-        scannerStart = scanner.start({ facingMode: 'environment' }, { fps: 8 }, async text => {
+        const onDecoded = async text => {
             if (captured) return;
             try { parseHandshakeInput(text); }
             catch { $('scanner-error').textContent = 'This QR code is not a connection link.'; $('scanner-error').hidden = false; return; }
@@ -186,8 +173,10 @@ $('scan').addEventListener('click', async () => {
             await stopScanner(); $('scanner-dialog').close();
             if ($('room-pass').value.trim()) await run(receive);
             else { notice('Link scanned. Enter your shared passphrase, then choose “Use received link”.'); $('room-pass').focus(); }
-        });
+        };
+        scannerStart = scanner.start({ facingMode: 'environment' }, { fps: 8 }, onDecoded);
         await scannerStart;
+        if (scanner?.isScanning) stopScannerFallback = startQRCodeVideoFallback(() => $('qr-reader').querySelector('video'), onDecoded);
     } catch (cause) {
         $('scanner-error').textContent = `Cannot start camera: ${cause.message || cause}. You can paste the link instead.`;
         $('scanner-error').hidden = false;

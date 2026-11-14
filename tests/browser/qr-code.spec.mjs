@@ -5,21 +5,24 @@ test('decodes a reproducible corpus of dense QR patterns', async ({ page }) => {
     const failures = await page.evaluate(async () => {
         const { createQRCodeCanvas, decodeQRCodeImage } = await import('./js/core/qr-code.js');
         const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+        const prefixes = ['offer=', 'https://example.org/covenant-between-web-peers/#offer='];
+        const variants = [280, 640].flatMap(width => prefixes.map(prefix => ({ width, prefix })));
         const failures = [];
-        for (let seed = 1; seed <= 12; seed++) {
-            const length = seed % 2 ? 1000 : 2000;
-            let state = seed; let text = 'offer=';
+        for (let seed = 1; seed <= 20; seed++) {
+            const length = [600, 800, 1000, 1400, 2000][(seed - 1) % 5];
+            let state = seed; let payload = '';
             for (let index = 0; index < length; index++) {
                 state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-                text += alphabet[state >>> 26];
+                payload += alphabet[state >>> 26];
             }
-            for (const width of [280, 640]) {
+            for (const { width, prefix } of variants) {
+                const text = prefix + payload;
                 const canvas = createQRCodeCanvas(text, width);
                 const blob = await new Promise(resolve => canvas.toBlob(resolve));
                 try {
                     const decoded = await decodeQRCodeImage(new File([blob], 'pattern.png', { type: 'image/png' }));
-                    if (decoded !== text) failures.push({ seed, length, width, error: 'Decoded different text' });
-                } catch (error) { failures.push({ seed, length, width, error: String(error) }); }
+                    if (decoded !== text) failures.push({ seed, length, width, prefix, error: 'Decoded different text' });
+                } catch (error) { failures.push({ seed, length, width, prefix, error: String(error) }); }
             }
         }
         return failures;

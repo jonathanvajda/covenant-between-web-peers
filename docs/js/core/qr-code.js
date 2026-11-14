@@ -6,7 +6,9 @@
 export function createQRCodeCanvas(text, pixels = 280) {
     const qr = globalThis.qrcode(0, 'L'); qr.addData(text, 'Byte'); qr.make();
     const count = qr.getModuleCount();
-    const border = 4; const cell = Math.max(2, Math.floor(pixels / (count + border * 2)));
+    const border = 4;
+    // Power-of-two module widths preserve the grid when a camera/image is halved.
+    const cell = 2 ** Math.max(1, Math.floor(Math.log2(pixels / (count + border * 2))));
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = (count + border * 2) * cell;
     const drawing = canvas.getContext('2d');
     drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, canvas.width, canvas.height);
@@ -47,6 +49,9 @@ export async function decodeQRCodeImage(file) {
             drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, canvas.width, canvas.height);
             drawing.imageSmoothingEnabled = false;
             drawing.drawImage(bitmap, 32, 32, width, height);
+            const pixels = drawing.getImageData(0, 0, canvas.width, canvas.height);
+            const decoded = globalThis.jsQR(pixels.data, pixels.width, pixels.height, { inversionAttempts: 'attemptBoth' });
+            if (decoded) return decoded.data;
             const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             try { return await reader.scanFile(new File([blob], 'qr-resampled.png', { type: 'image/png' }), false); }
             catch { /* Try the next bounded sampling scale. */ }
@@ -55,4 +60,30 @@ export async function decodeQRCodeImage(file) {
     } finally {
         bitmap?.close(); reader.clear(); container.remove();
     }
+}
+
+/** Supplement live scanning with the same normalized decoder used for image import.
+ * @param {function():HTMLVideoElement|null} getVideo Active scanner video element.
+ * @param {function(string):Promise<void>} onDecoded Deliver one recognized code.
+ * @returns {function():void} Cancel polling and ignore any pending decode result.
+ */
+export function startQRCodeVideoFallback(getVideo, onDecoded) {
+    let active = true;
+    let timer;
+    const sampleFrame = async () => {
+        try {
+            const video = getVideo();
+            if (!video || video.readyState < 2 || !video.videoWidth) return;
+            const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            const blob = await new Promise(resolve => canvas.toBlob(resolve));
+            const text = await decodeQRCodeImage(new File([blob], 'camera-frame.png', { type: 'image/png' }));
+            if (active) await onDecoded(text);
+        } catch { /* Most camera frames contain no readable code. Keep scanning. */ }
+        finally { if (active) timer = setTimeout(sampleFrame, 750); }
+    };
+    timer = setTimeout(sampleFrame, 750);
+    return () => { active = false; clearTimeout(timer); };
 }

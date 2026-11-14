@@ -6,7 +6,7 @@
     "test": "node --test tests/core.test.mjs && npm run test:network",
     "test:network": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "test:browser": "playwright test",
-    "test:browser:stress": "playwright test tests/browser/star-mesh.spec.mjs --grep \"actual QR\" --repeat-each=10 --retries=0",
+    "test:browser:stress": "playwright test tests/browser/chat.spec.mjs tests/browser/star-mesh.spec.mjs --grep \"actual QR|QR generation|camera scanner captures\" --repeat-each=10 --retries=0",
     "test:ci": "npm run check && npm test && npm audit --audit-level=high && npm run test:browser && npm run test:browser:stress",
     "check": "node tests/check-assets.mjs",
     "serve": "node tests/static-server.mjs"

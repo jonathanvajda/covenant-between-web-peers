@@ -44,7 +44,7 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test browser connection, chat, QR and offline support
         run: npm run test:browser
-      - name: Repeat randomized live QR import without retries
+      - name: Repeat both pages' randomized QR exchanges without retries
         run: npm run test:browser:stress
       - name: Retain browser failure diagnostics
         if: failure()

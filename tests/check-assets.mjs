@@ -22,6 +22,7 @@ for (const icon of manifest.icons) {
     assert.equal(bytes.readUInt32BE(16), size); assert.equal(bytes.readUInt32BE(20), size);
 }
 const hashes = {
+    'jsQR.js': 'bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859',
     'qrcode.min.js': '164fc2c1c9eaf0a03aa8dfdb855e82e41a5c6922fbad8bb3238116207e26bef7',
     'html5-qrcode.min.js': '660b12437b1d747e3e68b8be0685c08cb728140110ad213f167b14b66f8b1d8e'
 };

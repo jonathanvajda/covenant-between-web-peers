@@ -4,11 +4,12 @@ import { RTCManager } from './core/rtc-manager.js';
 import { encryptPayload, decryptPayload, MAX_TOKEN_LENGTH } from './core/crypto.js';
 import { makeHandshakeLink } from './core/bridge.js';
 import { parseRoomExchangeText, formatRoomExchangeCode, identifyRoomExchangeType } from './network/exchange.js';
-import { createQRCodeCanvas, decodeQRCodeImage } from './core/qr-code.js';
+import { createQRCodeCanvas, decodeQRCodeImage, startQRCodeVideoFallback } from './core/qr-code.js';
 
 const element = id => document.getElementById(id);
 let room;
 let scanner;
+let stopScannerFallback;
 let busy = false;
 let outgoingExchange;
 const showError = error => {
@@ -208,14 +209,19 @@ element('room-chat-form').onsubmit = event => {
     });
 };
 async function closeRoomScanner() {
+    stopScannerFallback?.(); stopScannerFallback = null;
     if (scanner?.isScanning) await scanner.stop();
     scanner = null; element('room-scanner').close();
 }
 element('scan-room-token').onclick = () => runRoomOperation(async () => {
     element('room-scanner').showModal(); scanner = new Html5Qrcode('room-reader');
-    try { await scanner.start({ facingMode: 'environment' }, { fps: 8 }, text => {
+    const onDecoded = text => {
         runRoomOperation(async () => { await closeRoomScanner(); await receiveExchangeText(text); });
-    }); } catch (error) { await closeRoomScanner(); throw error; }
+    };
+    try {
+        await scanner.start({ facingMode: 'environment' }, { fps: 8 }, onDecoded);
+        if (scanner?.isScanning) stopScannerFallback = startQRCodeVideoFallback(() => element('room-reader').querySelector('video'), onDecoded);
+    } catch (error) { await closeRoomScanner(); throw error; }
 });
 element('upload-room-qr').onclick = () => element('room-qr-file').click();
 element('room-qr-file').onchange = () => runRoomOperation(async () => {

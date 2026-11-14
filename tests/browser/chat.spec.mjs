@@ -77,22 +77,20 @@ test('wrong passphrase can be corrected, and a reply in a new tab explains recov
     } finally { await a.close(); await b.close(); }
 });
 
-test('QR generation produces a decodable invitation with bundled scanner', async ({ page, context }) => {
+test('QR generation produces a decodable invitation with bundled scanner', async ({ page, context }, testInfo) => {
     await localRTC(context);
     const invitation = await host(page);
     await page.locator('#show-qr').click();
     await expect(page.locator('#qr-dialog')).toBeVisible();
     await expect(page.locator('#qr-error')).toBeHidden();
-    // Test the bundled decoder itself against the generator, including the quiet zone.
+    const image = await page.locator('#qr-code canvas').evaluate(canvas => canvas.toDataURL().split(',')[1]);
+    await testInfo.attach('two-peer-invitation-qr.png', { body: Buffer.from(image, 'base64'), contentType: 'image/png' });
+    // Exercise the shared production decoder, including its bounded scale fallbacks.
     const decoded = await page.evaluate(async () => {
+        const { decodeQRCodeImage } = await import('./js/core/qr-code.js');
         const original = document.querySelector('#qr-code canvas');
-        const canvas = document.createElement('canvas'); canvas.width = canvas.height = original.width + 80;
-        const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(original, 40, 40);
-        const blob = await new Promise(resolve => canvas.toBlob(resolve));
-        const reader = document.createElement('div'); reader.id = 'file-reader'; document.body.append(reader);
-        const scanner = new window.Html5Qrcode('file-reader', { formatsToSupport: [window.Html5QrcodeSupportedFormats.QR_CODE] });
-        try { return await scanner.scanFile(new File([blob], 'invitation.png', { type: 'image/png' }), false); }
-        finally { scanner.clear(); reader.remove(); }
+        const blob = await new Promise(resolve => original.toBlob(resolve));
+        return decodeQRCodeImage(new File([blob], 'invitation.png', { type: 'image/png' }));
     });
     expect(decoded).toBe(invitation);
     await page.locator('#close-qr').click();
@@ -159,9 +157,9 @@ test('offline shell works at a GitHub Pages subpath without saving conversation 
         if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
     });
     const cached = await page.evaluate(async () => {
-        const cache = await caches.open('covenant-peer-chat-v5'); return (await cache.keys()).map(request => request.url);
+        const cache = await caches.open('covenant-peer-chat-v6'); return (await cache.keys()).map(request => request.url);
     });
-    expect(cached.length).toBe(23); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
+    expect(cached.length).toBe(24); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
     await context.setOffline(true); await page.reload();
     await expect(page.locator('h1')).toContainText('directly between you');
     await expect(page.locator('#host')).toBeEnabled();

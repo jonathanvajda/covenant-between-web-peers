@@ -1,12 +1,12 @@
 const CACHE_PREFIX = 'covenant-peer-chat-';
-const CACHE = `${CACHE_PREFIX}v5`;
+const CACHE = `${CACHE_PREFIX}v6`;
 const ASSETS = ['./', './index.html', './manifest.json', './css/styles.css', './js/app.js',
     './js/core/crypto.js', './js/core/rtc-manager.js', './js/core/module-registry.js', './js/core/bridge.js',
     './js/modules/chat.js', './js/vendor/qrcode.min.js', './js/vendor/html5-qrcode.min.js',
     './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
     './star-mesh.html', './pwa-integration.md', './js/star-mesh-app.js',
     './js/network/protocol.js', './js/network/transport.js', './js/network/room.js', './js/network/exchange.js',
-    './js/core/qr-code.js'];
+    './js/core/qr-code.js', './js/vendor/jsQR.js'];
 const ASSET_URLS = new Set(ASSETS.map(asset => new URL(asset, self.registration.scope).href));
 self.addEventListener('install', event => {
     // Deliberately do not skipWaiting: an update must not replace modules during a live chat.

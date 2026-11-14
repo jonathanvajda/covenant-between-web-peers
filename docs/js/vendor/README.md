@@ -4,6 +4,7 @@ The app makes no runtime CDN requests. These fixed browser bundles are cached by
 
 | File | Version | Source | License | SHA-256 |
 | --- | --- | --- | --- | --- |
+| `jsQR.js` | jsQR 1.4.0 | https://unpkg.com/jsqr@1.4.0/dist/jsQR.js | Apache-2.0 (`jsQR.LICENSE`) | `bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859` |
 | `qrcode.min.js` | qrcode-generator 1.4.4 | https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js | MIT (`qrcode.LICENSE`) | `164fc2c1c9eaf0a03aa8dfdb855e82e41a5c6922fbad8bb3238116207e26bef7` |
 | `html5-qrcode.min.js` | html5-qrcode 2.3.8 | https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js | Apache-2.0 (`html5-qrcode.LICENSE`) | `660b12437b1d747e3e68b8be0685c08cb728140110ad213f167b14b66f8b1d8e` |
 
