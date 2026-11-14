@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>P2P Browser RTS Bridge</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+        textarea { width: 100%; height: 80px; }
+        .hidden { display: none; }
+        button { padding: 10px 15px; margin: 5px 0; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h1>Browser P2P Bridge (URL Hash Method)</h1>
+    
+    <div id="setup-view">
+        <p>Enter a secret room password used to encrypt the connection handshake:</p>
+        <input type="password" id="room-pass" value="super-secret-rts-key" />
+        <br>
+        <button id="btn-host">1. Host Game (Create Offer)</button>
+        <button id="btn-join" class="hidden">2. Join Game (Process Answer)</button>
+    </div>
+
+    <div id="status-view">
+        <h3>Status: <span id="connection-status">Waiting for action...</span></h3>
+        <p id="instruction-text"></p>
+        <textarea id="data-output" readonly placeholder="Link or data will appear here..."></textarea>
+    </div>
+
+    <div id="chat-view" class="hidden">
+        <h3>P2P Connected! 🎉</h3>
+        <input type="text" id="chat-input" placeholder="Type a game command (e.g., MOVE_UNIT)..." style="width: 70%;">
+        <button id="btn-send">Send</button>
+        <ul id="log" style="list-style-type: none; padding: 0;"></ul>
+    </div>
+
+<script>
+// --- Cryptographic Helper (AES-GCM) ---
+async function getKey(password) {
+    const enc = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+        "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveKey"]
+    );
+    return window.crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: enc.encode("rts-static-salt"), iterations: 100000, hash: "SHA-256" },
+        keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]
+    );
+}
+
+async function encryptData(secret, dataObj) {
+    const key = await getKey(secret);
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(JSON.stringify(dataObj));
+    const ciphertext = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+    
+    // Combine IV and Ciphertext into a single Base64 string
+    const combined = new Uint8Array(iv.length + ciphertext.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(ciphertext), iv.length);
+    return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptData(secret, base64Str) {
+    try {
+        const key = await getKey(secret);
+        const combined = Uint8Array.from(atob(base64Str), c => c.charCodeAt(0));
+        const iv = combined.slice(0, 12);
+        const ciphertext = combined.slice(12);
+        const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+        return JSON.parse(new TextDecoder().decode(decrypted));
+    } catch (e) {
+        alert("Decryption failed! Check your room password.");
+        throw e;
+    }
+}
+
+// --- WebRTC Logic ---
+let pc = null;
+let dataChannel = null;
+const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+const passwordInput = document.getElementById('room-pass');
+const statusEl = document.getElementById('connection-status');
+const instructionEl = document.getElementById('instruction-text');
+const outputEl = document.getElementById('data-output');
+
+function createPeerConnection() {
+    pc = new RTCPeerConnection(config);
+    
+    // Gather ICE candidates and update output when complete
+    pc.onicegatheringstatechange = async () => {
+        if (pc.iceGatheringState === 'complete') {
+            const password = passwordInput.value;
+            const payload = {
+                sdp: pc.localDescription,
+                type: pc.localDescription.type
+            };
+            const encryptedToken = await encryptData(password, payload);
+            
+            // Build shareable link containing the encrypted payload in the URL hash
+            const fullLink = `${window.location.origin}${window.location.pathname}#payload=${encodeURIComponent(encryptedToken)}`;
+            outputEl.value = fullLink;
+        }
+    };
+}
+
+// Host Flow
+document.getElementById('btn-host').onclick = async () => {
+    createPeerConnection();
+    
+    // Create data channel for game state updates
+    dataChannel = pc.createDataChannel("game-state");
+    setupDataChannel();
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    statusEl.innerText = "Generating Offer...";
+    instructionEl.innerText = "Copy this secure link and send it to Player 2:";
+};
+
+// Check URL Hash on Load (Handles both Joiner and Host receiving Answer)
+window.onload = async () => {
+    const hash = window.location.hash;
+    if (!hash.includes('payload=')) return;
+
+    const encryptedToken = decodeURIComponent(hash.split('payload=')[1]);
+    const password = prompt("Enter the room password to decrypt connection:");
+    if (!password) return;
+    passwordInput.value = password;
+
+    const payload = await decryptData(password, encryptedToken);
+
+    if (payload.type === 'offer') {
+        // --- Joiner Flow ---
+        createPeerConnection();
+        
+        pc.ondatachannel = (event) => {
+            dataChannel = event.channel;
+            setupDataChannel();
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        statusEl.innerText = "Generating Answer...";
+        instructionEl.innerText = "Copy this reply link and send it back to Player 1:";
+        
+        document.getElementById('btn-host').classList.add('hidden');
+        document.getElementById('btn-join').classList.remove('hidden');
+
+    } else if (payload.type === 'answer') {
+        // --- Host Finalizing Flow ---
+        await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        statusEl.innerText = "Establishing P2P link...";
+    }
+};
+
+function setupDataChannel() {
+    dataChannel.onopen = () => {
+        statusEl.innerText = "Connected!";
+        document.getElementById('setup-view').classList.add('hidden');
+        document.getElementById('status-view').classList.add('hidden');
+        document.getElementById('chat-view').classList.remove('hidden');
+    };
+    
+    dataChannel.onmessage = (event) => {
+        appendLog(`Peer: ${event.data}`);
+    };
+}
+
+// UI Chat/Command transmission
+document.getElementById('btn-send').onclick = () => {
+    const val = document.getElementById('chat-input').value;
+    if(dataChannel && dataChannel.readyState === 'open') {
+        dataChannel.send(val);
+        appendLog(`You: ${val}`);
+        document.getElementById('chat-input').value = '';
+    }
+};
+
+function appendLog(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    document.getElementById('log').appendChild(li);
+}
+</script>
+
+</body>
+</html>
