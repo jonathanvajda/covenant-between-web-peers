@@ -3,12 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/core.test.mjs",
+    "test": "node --test tests/core.test.mjs && npm run test:network",
+    "test:network": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "test:browser": "playwright test",
     "check": "node tests/check-assets.mjs",
     "serve": "node tests/static-server.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0"
+    "@playwright/test": "1.64.0",
+    "jest": "30.5.2"
   }
 }

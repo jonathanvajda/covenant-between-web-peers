@@ -2,6 +2,8 @@
 
 The first implementation is a static, installable browser-to-browser text chat in `docs/index.html`. It follows the technical specification's six epics; see [implementation coverage](specs/IMPLEMENTATION_PROGRESS.md). The standalone `docs/p2p-game-example.html` remains an earlier game experiment.
 
+The [star and mesh chatroom](docs/star-mesh.html) adds host-relayed rooms for up to twelve devices and an opt-in full mesh for up to six. Its native ES modules separate transport, pure protocol helpers, room coordination, and UI. See the [PWA integration guide](docs/pwa-integration.md) for game actions, headless adapters, permissions, testing, and recovery limitations.
+
 ## Run locally
 
 Use Node 24+ for developer tooling:

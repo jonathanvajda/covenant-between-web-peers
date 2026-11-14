@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#153d36"><meta name="referrer" content="no-referrer">
+  <title>Covenant · Star & mesh chatroom</title>
+  <link rel="manifest" href="./manifest.json"><link rel="icon" href="./icons/icon.svg">
+  <link rel="stylesheet" href="./css/styles.css">
+  <script defer src="./js/vendor/qrcode.min.js"></script>
+  <script defer src="./js/vendor/html5-qrcode.min.js"></script>
+  <script type="module" src="./js/star-mesh-app.js"></script>
+</head>
+<body>
+<header class="site-header"><a class="brand" href="./">Covenant<span>between web peers</span></a><span class="badge" id="room-status" role="status">No room</span></header>
+<main>
+  <section class="intro"><p class="eyebrow">One room. More possibilities.</p><h1>Start with a star.<br>Connect as a mesh.</h1><p>A chatroom for up to 12 devices through a host. With 2–6 devices, turn on direct mesh connections together.</p><a href="./pwa-integration.md">PWA integration guide</a></section>
+  <p id="room-error" class="error" role="alert" hidden></p>
+  <div class="workspace">
+    <section class="panel" aria-labelledby="setup-heading">
+      <div class="panel-heading"><h2 id="setup-heading">01 / Room connections</h2><button id="leave-room" class="quiet">Leave / reset</button></div>
+      <label for="room-password">Shared passphrase</label><input id="room-password" type="password" autocomplete="off" placeholder="Share separately from invitations">
+      <label for="room-network">Network path</label><select id="room-network"><option value="internet">Internet / different networks</option><option value="local">Same Wi-Fi (no STUN)</option></select>
+      <div class="actions"><button id="create-room">Create room</button><button id="invite-peer" class="secondary" disabled>Invite next peer</button><button id="cancel-room-invite" class="quiet">Cancel pending invite</button></div>
+      <label for="room-incoming">Received invitation or reply</label><textarea id="room-incoming" rows="3" spellcheck="false" autocomplete="off"></textarea>
+      <div class="actions"><button id="use-room-token" class="secondary">Use received link</button><button id="scan-room-token" class="quiet">Scan QR</button></div>
+      <p class="hint">Host: invite one peer, apply their reply in this tab, wait for connection, then invite the next. Each invitation belongs to one peer. Keep the host tab open.</p>
+      <label for="room-outgoing">Send this encrypted link to the other device</label><textarea id="room-outgoing" readonly rows="3"></textarea>
+      <div class="actions"><button id="copy-room-token" class="quiet">Copy link</button></div><div id="room-qr"></div><p id="room-qr-note" class="hint"></p>
+      <div class="actions"><button id="enable-mesh" disabled>Turn on mesh</button></div>
+      <p class="hint">Messages use the host until every direct link is ready. Failed mesh setup returns to star after 45 seconds. Mesh rooms do not accept new peers.</p>
+      <h3>Participants</h3><ul id="room-members"></ul>
+    </section>
+    <section class="panel chat-panel" aria-labelledby="room-chat-heading">
+      <div class="panel-heading"><h2 id="room-chat-heading">02 / Chatroom</h2><span class="small-label">250 characters</span></div>
+      <p class="chat-note">Your participant ID identifies your messages. History stays in this tab. Private messages pass through the host in star mode.</p>
+      <div id="chat-messages" role="log" aria-live="polite" aria-label="Room messages"></div>
+      <form id="room-chat-form"><label for="room-recipient">Send to</label><select id="room-recipient"><option value="">Everyone</option></select><label for="room-chat-input">Message</label><div class="composer"><input id="room-chat-input" maxlength="250" autocomplete="off" required><button id="room-send">Send</button></div></form>
+    </section>
+  </div>
+  <section class="network-note"><h2>A foundation for shared play.</h2><p>WebRTC encrypts live connections; AES-GCM protects exchanged links. Public STUN helps discover routes; some networks require TURN, which is not included. Temporary disconnects retain links so ICE can recover. A failed connection requires a fresh invitation; identity recovery and host migration are future work.</p></section>
+</main>
+<dialog id="room-scanner"><button id="close-room-scanner" class="quiet">Close camera</button><div id="room-reader"></div></dialog>
+</body></html>
