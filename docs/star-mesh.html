@@ -15,17 +15,24 @@
 <main>
   <section class="intro"><p class="eyebrow">One room. More possibilities.</p><h1>Start with a star.<br>Connect as a mesh.</h1><p>A chatroom for up to 12 devices through a host. With 2–6 devices, turn on direct mesh connections together.</p><a href="./pwa-integration.md">PWA integration guide</a></section>
   <p id="room-error" class="error" role="alert" hidden></p>
+  <p id="room-progress" class="notice" role="status">Open this page in your preferred browser and keep it open. Exchange codes using your usual messaging app; paste them here without opening a link.</p>
   <div class="workspace">
     <section class="panel" aria-labelledby="setup-heading">
       <div class="panel-heading"><h2 id="setup-heading">01 / Room connections</h2><button id="leave-room" class="quiet">Leave / reset</button></div>
       <label for="room-password">Shared passphrase</label><input id="room-password" type="password" autocomplete="off" placeholder="Share separately from invitations">
       <label for="room-network">Network path</label><select id="room-network"><option value="internet">Internet / different networks</option><option value="local">Same Wi-Fi (no STUN)</option></select>
-      <div class="actions"><button id="create-room">Create room</button><button id="invite-peer" class="secondary" disabled>Invite next peer</button><button id="cancel-room-invite" class="quiet">Cancel pending invite</button></div>
-      <label for="room-incoming">Received invitation or reply</label><textarea id="room-incoming" rows="3" spellcheck="false" autocomplete="off"></textarea>
-      <div class="actions"><button id="use-room-token" class="secondary">Use received link</button><button id="scan-room-token" class="quiet">Scan QR</button></div>
-      <p class="hint">Host: invite one peer, apply their reply in this tab, wait for connection, then invite the next. Each invitation belongs to one peer. Keep the host tab open.</p>
-      <label for="room-outgoing">Send this encrypted link to the other device</label><textarea id="room-outgoing" readonly rows="3"></textarea>
-      <div class="actions"><button id="copy-room-token" class="quiet">Copy link</button></div><div id="room-qr"></div><p id="room-qr-note" class="hint"></p>
+      <div class="actions"><button id="create-room">Create room</button><button id="invite-peer" class="secondary" disabled>Invite next peer</button><button id="cancel-room-invite" class="quiet" disabled>Cancel pending invite</button></div>
+      <label for="room-incoming" id="room-incoming-label">Received invitation or response code</label><textarea id="room-incoming" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="room-code-help" placeholder="Paste a code here. Existing links also work."></textarea>
+      <div class="actions"><button id="use-room-token" class="secondary">Apply received code</button><button id="paste-room-token" class="quiet">Paste code</button><button id="upload-room-token" class="quiet">Load code file</button><button id="scan-room-token" class="quiet">Scan QR with camera</button><button id="upload-room-qr" class="quiet">Read QR image</button></div>
+      <input id="room-code-file" type="file" accept="text/plain,.txt,.covenant" hidden><input id="room-qr-file" type="file" accept="image/*" hidden>
+      <p class="hint" id="room-code-help">Paste, load a file, or scan a code to apply it here. Enter your passphrase first for automatic processing. Each invitation belongs to one peer; keep the original host tab open. After connection, this box clears for the next peer.</p>
+      <section id="room-share-panel" hidden aria-labelledby="room-share-title">
+      <h3 id="room-share-title">Send your code</h3>
+      <label for="room-outgoing">Encrypted code — copy and send as text</label><textarea id="room-outgoing" readonly rows="3" spellcheck="false" autocapitalize="off"></textarea>
+      <div class="actions"><button id="copy-room-token">Copy code</button><button id="share-room-token" class="secondary">Share code</button><button id="download-room-token" class="quiet">Save code file</button><button id="enlarge-room-qr" class="quiet">Enlarge QR</button></div>
+      <div id="room-qr"></div><p id="room-qr-note" class="hint"></p>
+      <details><summary>Optional link</summary><p class="hint">Copy and paste this into the existing room. Opening it in another browser or an app’s built-in browser cannot move your current connection.</p><label for="room-outgoing-link">Connection link</label><textarea id="room-outgoing-link" readonly rows="2" spellcheck="false"></textarea><button id="copy-room-link" class="quiet">Copy link</button></details>
+      </section>
       <div class="actions"><button id="enable-mesh" disabled>Turn on mesh</button></div>
       <p class="hint">Messages use the host until every direct link is ready. Failed mesh setup returns to star after 45 seconds. Mesh rooms do not accept new peers.</p>
       <h3>Participants</h3><ul id="room-members"></ul>
@@ -40,4 +47,5 @@
   <section class="network-note"><h2>A foundation for shared play.</h2><p>WebRTC encrypts live connections; AES-GCM protects exchanged links. Public STUN helps discover routes; some networks require TURN, which is not included. Temporary disconnects retain links so ICE can recover. A failed connection requires a fresh invitation; identity recovery and host migration are future work.</p></section>
 </main>
 <dialog id="room-scanner"><button id="close-room-scanner" class="quiet">Close camera</button><div id="room-reader"></div></dialog>
+<dialog id="room-qr-dialog" aria-label="Enlarged room code"><button id="close-large-room-qr" class="quiet">Close QR</button><div id="room-large-qr"></div></dialog>
 </body></html>

@@ -159,9 +159,9 @@ test('offline shell works at a GitHub Pages subpath without saving conversation 
         if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
     });
     const cached = await page.evaluate(async () => {
-        const cache = await caches.open('covenant-peer-chat-v3'); return (await cache.keys()).map(request => request.url);
+        const cache = await caches.open('covenant-peer-chat-v4'); return (await cache.keys()).map(request => request.url);
     });
-    expect(cached.length).toBe(21); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
+    expect(cached.length).toBe(22); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
     await context.setOffline(true); await page.reload();
     await expect(page.locator('h1')).toContainText('directly between you');
     await expect(page.locator('#host')).toBeEnabled();

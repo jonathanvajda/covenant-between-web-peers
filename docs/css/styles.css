@@ -3,3 +3,4 @@
 #share-qr{margin:16px auto 0;max-width:260px}#share-qr canvas{display:block;width:100%;height:auto}
 select{font:inherit;min-height:46px;width:100%;border:1px solid #aabcb2;border-radius:8px;padding:10px;background:#fff;color:var(--ink)}
 #room-members{padding-left:20px;overflow-wrap:anywhere}#room-qr{margin-top:16px}#room-qr img,#room-qr canvas{max-width:100%;height:auto}#room-reader{width:min(440px,75vw);min-height:180px}#room-reader video{max-width:100%}
+#room-share-panel{border-top:1px solid var(--line);margin-top:24px;padding-top:12px}#room-share-panel details{margin-top:20px}#room-large-qr img,#room-large-qr canvas{max-width:100%;height:auto}#room-share-panel summary{cursor:pointer}#room-outgoing{font-family:monospace}

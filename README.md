@@ -4,6 +4,8 @@ The first implementation is a static, installable browser-to-browser text chat i
 
 The [star and mesh chatroom](docs/star-mesh.html) adds host-relayed rooms for up to twelve devices and an opt-in full mesh for up to six. Its native ES modules separate transport, pure protocol helpers, room coordination, and UI. See the [PWA integration guide](docs/pwa-integration.md) for game actions, headless adapters, permissions, testing, and recovery limitations.
 
+The room uses non-URL invitation and response codes by default. Copy/share the text, save/load a code file, scan a QR, or read a QR screenshot. Paste received codes into the existing browser tab; no link navigation is required. Accepted codes clear automatically, and completed connections register the participant and prepare an empty input for the next response. Optional legacy links remain supported.
+
 ## Run locally
 
 Use Node 24+ for developer tooling:
