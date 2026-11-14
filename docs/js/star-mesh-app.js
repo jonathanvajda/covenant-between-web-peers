@@ -210,7 +210,7 @@ element('room-chat-form').onsubmit = event => {
 };
 async function closeRoomScanner() {
     stopScannerFallback?.(); stopScannerFallback = null;
-    if (scanner?.isScanning) await scanner.stop();
+    if (scanner && scanner.getState() !== Html5QrcodeScannerState.NOT_STARTED) await scanner.stop();
     scanner = null; element('room-scanner').close();
 }
 element('scan-room-token').onclick = () => runRoomOperation(async () => {
@@ -220,7 +220,7 @@ element('scan-room-token').onclick = () => runRoomOperation(async () => {
     };
     try {
         await scanner.start({ facingMode: 'environment' }, { fps: 8 }, onDecoded);
-        if (scanner?.isScanning) stopScannerFallback = startQRCodeVideoFallback(() => element('room-reader').querySelector('video'), onDecoded);
+        if (scanner) stopScannerFallback = startQRCodeVideoFallback(() => element('room-reader').querySelector('video'), onDecoded);
     } catch (error) { await closeRoomScanner(); throw error; }
 });
 element('upload-room-qr').onclick = () => element('room-qr-file').click();

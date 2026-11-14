@@ -149,7 +149,7 @@ async function stopScanner() {
     stopScannerPromise = (async () => {
         try {
             if (scannerStart) { try { await scannerStart; } catch { /* Permission error is shown by start handler. */ } }
-            if (scanner?.isScanning) await scanner.stop();
+            if (scanner && scanner.getState() !== Html5QrcodeScannerState.NOT_STARTED) await scanner.stop();
             scanner?.clear();
         } catch { /* Camera may already have stopped after browser permission changes. */ }
         finally { scanner = null; scannerStart = null; }
@@ -160,6 +160,8 @@ async function stopScanner() {
 $('scan').addEventListener('click', async () => {
     if (scanner || stopScannerPromise) return;
     $('scanner-error').hidden = true;
+    $('scanner-progress').dataset.state = 'starting';
+    $('scanner-progress').textContent = 'Starting camera…';
     $('scanner-dialog').showModal();
     try {
         if (!navigator.mediaDevices?.getUserMedia || !window.Html5Qrcode) throw new Error('Camera scanning is unavailable. Paste the link instead.');
@@ -170,14 +172,22 @@ $('scan').addEventListener('click', async () => {
             try { parseHandshakeInput(text); }
             catch { $('scanner-error').textContent = 'This QR code is not a connection link.'; $('scanner-error').hidden = false; return; }
             captured = true; $('incoming').value = text;
+            $('scanner-progress').dataset.state = 'decoded';
+            $('scanner-progress').textContent = 'Code read. Preparing your response…';
             await stopScanner(); $('scanner-dialog').close();
             if ($('room-pass').value.trim()) await run(receive);
             else { notice('Link scanned. Enter your shared passphrase, then choose “Use received link”.'); $('room-pass').focus(); }
         };
         scannerStart = scanner.start({ facingMode: 'environment' }, { fps: 8 }, onDecoded);
         await scannerStart;
-        if (scanner?.isScanning) stopScannerFallback = startQRCodeVideoFallback(() => $('qr-reader').querySelector('video'), onDecoded);
+        if (!captured) {
+            $('scanner-progress').dataset.state = 'scanning';
+            $('scanner-progress').textContent = 'Point the camera at the complete QR code.';
+        }
+        // start() can resolve before the library flips its rendering-only isScanning flag.
+        if (scanner && !captured) stopScannerFallback = startQRCodeVideoFallback(() => $('qr-reader').querySelector('video'), onDecoded);
     } catch (cause) {
+        $('scanner-progress').dataset.state = 'failed';
         $('scanner-error').textContent = `Cannot start camera: ${cause.message || cause}. You can paste the link instead.`;
         $('scanner-error').hidden = false;
         await stopScanner();

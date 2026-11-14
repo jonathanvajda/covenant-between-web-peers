@@ -50,7 +50,7 @@
     </main>
     <footer>Covenant / First implementation: peer chat</footer>
     <dialog id="qr-dialog" aria-labelledby="qr-title"><div class="panel-heading"><h2 id="qr-title">Scan this connection</h2><button id="close-qr" class="quiet" type="button">Close</button></div><p>Scan on the other device, then enter your shared passphrase.</p><div id="qr-code" aria-label="Encrypted connection QR code"></div><p id="qr-error" class="hint" hidden></p></dialog>
-    <dialog id="scanner-dialog" aria-labelledby="scanner-title"><div class="panel-heading"><h2 id="scanner-title">Scan a received link</h2><button id="close-scanner" class="quiet" type="button">Close</button></div><p>Allow camera access, then point at the other device's QR code.</p><div id="qr-reader"></div><p id="scanner-error" class="error" role="alert" hidden></p></dialog>
+    <dialog id="scanner-dialog" aria-labelledby="scanner-title"><div class="panel-heading"><h2 id="scanner-title">Scan a received link</h2><button id="close-scanner" class="quiet" type="button">Close</button></div><p id="scanner-progress" role="status" data-state="idle">Allow camera access, then point at the other device's QR code.</p><div id="qr-reader"></div><p id="scanner-error" class="error" role="alert" hidden></p></dialog>
     <noscript><p class="error">Enable JavaScript to establish a peer connection.</p></noscript>
 </body>
 </html>

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 
 const secret = 'a separate strong shared passphrase';
 // Use real browser WebRTC with host candidates for deterministic local QA.
@@ -106,15 +107,29 @@ test('camera denial is recoverable and dialogs close cleanly', async ({ page }) 
     await page.locator('#process').click(); await expect(page.locator('#error')).toContainText('Invalid');
 });
 
-test('camera scanner captures a synthetic QR stream and automatically generates a reply', async ({ browser }) => {
+async function verifyCameraExchange({ browser }, testInfo, delayedRendering = false) {
     const a = await browser.newContext(); const b = await browser.newContext();
     await localRTC(a); await localRTC(b);
+    let bob;
+    let qr;
     try {
-        const alice = await a.newPage(); const bob = await b.newPage();
+        const alice = await a.newPage(); bob = await b.newPage();
         await host(alice); await alice.locator('#show-qr').click();
-        const qr = await alice.evaluate(() => document.querySelector('#qr-code canvas').toDataURL());
+        qr = await alice.evaluate(() => document.querySelector('#qr-code canvas').toDataURL());
         await bob.goto('./'); await bob.locator('#room-pass').fill(secret);
-        await bob.evaluate(async imageURL => {
+        await bob.evaluate(async ({ imageURL, delayedRendering }) => {
+            if (delayedRendering) {
+                const start = Html5Qrcode.prototype.start;
+                Html5Qrcode.prototype.start = async function(config, options) {
+                    // Keep real camera startup, but force the fallback to do all decoding.
+                    const result = await start.call(this, config, options, () => {});
+                    Object.defineProperty(this, 'isScanning', { get: () => false, set: () => {}, configurable: true });
+                    return result;
+                };
+            }
+            window.cameraFrames = 0; window.fallbackFrames = 0;
+            const createBitmap = window.createImageBitmap.bind(window);
+            window.createImageBitmap = (...args) => { window.fallbackFrames++; return createBitmap(...args); };
             const image = new Image(); image.src = imageURL; await image.decode();
             // Match the source grid exactly; actual camera optics still need device QA.
             document.querySelector('#scanner-dialog').style.maxWidth = 'none';
@@ -124,16 +139,54 @@ test('camera scanner captures a synthetic QR stream and automatically generates 
             window.cameraStream = canvas.captureStream(10);
             // A capture stream needs frames painted after capture starts.
             window.cameraPaint = setInterval(() => {
+                window.cameraFrames++;
                 ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 40, 40);
             }, 100);
             Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => window.cameraStream });
-        }, qr);
+        }, { imageURL: qr, delayedRendering });
         await bob.locator('#scan').click();
+        await expect(bob.locator('#scanner-progress'), 'Camera must decode the invitation before signaling starts').toHaveAttribute('data-state', 'decoded', { timeout: 15000 });
+        await expect(bob.locator('#scanner-dialog'), 'Decoded camera must shut down before creating a reply').toBeHidden();
         await expect(bob.locator('#outgoing')).toHaveValue(/#answer=/, { timeout: 15000 });
         await expect(bob.locator('#scanner-dialog')).toBeHidden();
         expect(await bob.evaluate(() => window.cameraStream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+        if (delayedRendering) expect(await bob.evaluate(() => window.fallbackFrames)).toBeGreaterThan(0);
         await bob.evaluate(() => clearInterval(window.cameraPaint));
+    } catch (error) {
+        if (qr) {
+            const path = testInfo.outputPath('camera-source.png');
+            await writeFile(path, Buffer.from(qr.split(',')[1], 'base64'));
+            await testInfo.attach('camera-source.png', { path, contentType: 'image/png' });
+        }
+        if (bob && !bob.isClosed()) {
+            const diagnostic = await bob.evaluate(() => {
+                const video = document.querySelector('#qr-reader video');
+                const canvas = document.createElement('canvas');
+                canvas.width = video?.videoWidth || 1; canvas.height = video?.videoHeight || 1;
+                if (video?.readyState >= 2) canvas.getContext('2d').drawImage(video, 0, 0);
+                return {
+                    phase: document.querySelector('#scanner-progress').dataset.state,
+                    scannerError: document.querySelector('#scanner-error').textContent,
+                    appError: document.querySelector('#error').textContent,
+                    cameraFrames: window.cameraFrames, fallbackFrames: window.fallbackFrames,
+                    videoState: video?.readyState, frame: canvas.toDataURL()
+                };
+            });
+            const framePath = testInfo.outputPath('camera-frame.png');
+            await writeFile(framePath, Buffer.from(diagnostic.frame.split(',')[1], 'base64'));
+            await testInfo.attach('camera-frame.png', { path: framePath, contentType: 'image/png' });
+            delete diagnostic.frame;
+            const diagnosticPath = testInfo.outputPath('camera-stage.json');
+            await writeFile(diagnosticPath, JSON.stringify(diagnostic));
+            await testInfo.attach('camera-stage.json', { path: diagnosticPath, contentType: 'application/json' });
+        }
+        throw error;
     } finally { await a.close(); await b.close(); }
+}
+
+test('camera scanner captures a synthetic QR stream and automatically generates a reply', verifyCameraExchange);
+test('camera scanner captures a code before the rendering flag is set', async ({ browser }, testInfo) => {
+    await verifyCameraExchange({ browser }, testInfo, true);
 });
 
 test('clipboard denial and oversized QR retain a usable link', async ({ page, context }) => {
@@ -157,7 +210,7 @@ test('offline shell works at a GitHub Pages subpath without saving conversation 
         if (!navigator.serviceWorker.controller) await new Promise(resolve => navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true }));
     });
     const cached = await page.evaluate(async () => {
-        const cache = await caches.open('covenant-peer-chat-v6'); return (await cache.keys()).map(request => request.url);
+        const cache = await caches.open('covenant-peer-chat-v7'); return (await cache.keys()).map(request => request.url);
     });
     expect(cached.length).toBe(24); expect(cached.some(url => /[?#]/.test(url))).toBe(false);
     await context.setOffline(true); await page.reload();
