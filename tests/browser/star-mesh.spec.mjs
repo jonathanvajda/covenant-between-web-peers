@@ -5,6 +5,7 @@ const password = 'room integration test separate secret';
 async function joinRoomFromInvitation(host, client) {
     const invitation = await host.locator('#room-outgoing').inputValue();
     await client.goto('./star-mesh.html');
+    await client.locator('#choose-join-room').click();
     await client.locator('#room-password').fill(password);
     await client.locator('#room-network').selectOption('local');
     await client.locator('#room-incoming').fill(invitation);
@@ -27,6 +28,7 @@ test('three real browsers chat in star, send privately, switch to mesh and survi
     const [host, first, second] = pages;
     try {
         await host.goto('./star-mesh.html');
+        await host.locator('#choose-create-room').click();
         await host.locator('#room-password').fill(password);
         await host.locator('#room-network').selectOption('local');
         await host.locator('#create-room').click();
@@ -47,6 +49,7 @@ test('three real browsers chat in star, send privately, switch to mesh and survi
         await first.locator('#room-chat-input').fill('private in star'); await first.locator('#room-send').click();
         await expect(second.locator('.message')).toHaveCount(2);
         await expect(host.locator('.message')).toHaveCount(1);
+        await host.locator('#room-topology-options summary').click();
         await host.locator('#enable-mesh').click();
         for (const page of pages) await expect(page.locator('#room-status')).toHaveText('mesh · 2 links', { timeout: 20000 });
         await host.close();
@@ -57,17 +60,22 @@ test('three real browsers chat in star, send privately, switch to mesh and survi
     } finally { await Promise.all(contexts.map(context => context.close())); }
 });
 
-test('room fits a phone viewport and reports a send before joining', async ({ page }) => {
+test('room fits a phone viewport and presents separate create/join paths', async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('./star-mesh.html');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.locator('#room-chat-input').fill('not connected');
-    await page.locator('#room-send').click();
-    await expect(page.locator('#room-error')).toContainText('Create or join a room first');
+    await expect(page.locator('#room-chat-panel')).toBeHidden();
+    await expect(page.locator('#room-connection-panel')).toBeHidden();
+    await page.locator('#choose-join-room').click();
+    await expect(page.locator('#room-receive-panel')).toBeVisible();
+    await expect(page.locator('#create-room')).toBeHidden();
+    await expect(page.locator('#invite-peer')).toBeHidden();
+    await expect(page.locator('#use-room-token')).toHaveText('Join using this invitation');
 });
 
 async function createLocalRoom(page) {
     await page.goto('./star-mesh.html');
+    await page.locator('#choose-create-room').click();
     await page.locator('#room-password').fill(password);
     await page.locator('#room-network').selectOption('local');
     await page.locator('#create-room').click();
@@ -86,6 +94,7 @@ test('downloads a plain code file, joins from it, and applies a reply link to th
         const download = await downloadEvent;
         expect(download.suggestedFilename()).toBe('covenant-offer-code.txt');
         await client.goto('./star-mesh.html');
+        await client.locator('#choose-join-room').click();
         await client.locator('#room-password').fill(password);
         await client.locator('#room-network').selectOption('local');
         await client.locator('#room-code-file').setInputFiles(await download.path());
@@ -123,6 +132,7 @@ test('plain-text native share, clipboard fallbacks, paste processing, and bare-t
         await host.locator('#paste-room-token').click();
         await expect(host.locator('#room-progress')).toContainText('Clipboard access is unavailable');
         await client.goto('./star-mesh.html');
+        await client.locator('#choose-join-room').click();
         await client.locator('#room-network').selectOption('local');
         await client.locator('#room-password').fill('incorrect password');
         await client.locator('#room-incoming').evaluate((input, text) => {
@@ -163,5 +173,54 @@ test('imports an actual QR screenshot as a code without camera access', async ({
         await expect(client.locator('#room-incoming')).toHaveValue(code, { timeout: 15000 });
         await expect(client.locator('#room-progress')).toContainText('Code received');
         await expect(client.locator('#room-scanner')).not.toBeVisible();
+    } finally { await context.close(); }
+});
+
+test('host invitations are sequential and an old response cannot fill a new invitation', async ({ browser }) => {
+    const context = await browser.newContext();
+    try {
+        const host = await context.newPage(); const client = await context.newPage();
+        await host.goto('./star-mesh.html');
+        await host.locator('#choose-create-room').click();
+        await expect(host.locator('#room-receive-panel')).toBeHidden();
+        await expect(host.locator('#room-share-panel')).toBeHidden();
+        await host.locator('#room-password').fill(password);
+        await host.locator('#room-network').selectOption('local');
+        await host.locator('#create-room').click();
+        await expect(host.locator('#room-share-title')).toContainText('Invitation 1');
+        await expect(host.locator('#room-share-help')).toContainText('one person');
+        await expect(host.locator('#invite-peer')).toBeHidden();
+        const firstInvite = await host.locator('#room-outgoing').inputValue();
+        await host.locator('#room-incoming').fill(firstInvite);
+        await host.locator('#use-room-token').click();
+        await expect(host.locator('#room-error')).toContainText('This is an invitation code');
+        await expect(host.locator('#room-outgoing')).toHaveValue(firstInvite);
+        await client.goto('./star-mesh.html');
+        await client.locator('#choose-join-room').click();
+        await client.locator('#room-password').fill(password);
+        await client.locator('#room-network').selectOption('local');
+        await client.locator('#room-incoming').fill(firstInvite);
+        await client.locator('#use-room-token').click();
+        await expect(client.locator('#room-outgoing')).toHaveValue(/^answer=/);
+        await expect(client.locator('#room-receive-panel')).toBeHidden();
+        await expect(client.locator('#invite-peer')).toBeHidden();
+        const staleResponse = await client.locator('#room-outgoing').inputValue();
+        await host.locator('#room-incoming').fill('unfinished previous response');
+        await host.locator('#cancel-room-invite').click();
+        await expect(host.locator('#room-incoming')).toHaveValue('');
+        await expect(host.locator('#room-receive-panel')).toBeHidden();
+        await host.locator('#invite-peer').click();
+        await expect(host.locator('#room-receive-heading')).toContainText('Invitation 2');
+        await expect(host.locator('#room-incoming')).toHaveValue('');
+        const secondInvite = await host.locator('#room-outgoing').inputValue();
+        expect(secondInvite).not.toBe(firstInvite);
+        await host.locator('#room-incoming').fill(staleResponse);
+        await host.locator('#use-room-token').click();
+        await expect(host.locator('#room-error')).toContainText('does not match the current invitation');
+        await expect(host.locator('#room-outgoing')).toHaveValue(secondInvite);
+        await joinRoomFromInvitation(host, client);
+        await expect(host.locator('#room-connection-panel')).toHaveAttribute('data-phase', 'host-ready');
+        await expect(host.locator('#room-receive-panel')).toBeHidden();
+        await expect(host.locator('#invite-peer')).toBeVisible();
     } finally { await context.close(); }
 });

@@ -5,6 +5,7 @@ import { encryptPayload, decryptPayload, MAX_TOKEN_LENGTH } from './core/crypto.
 import { makeHandshakeLink } from './core/bridge.js';
 import { parseRoomExchangeText, formatRoomExchangeCode, identifyRoomExchangeType } from './network/exchange.js';
 import { createQRCodeCanvas, decodeQRCodeImage, startQRCodeVideoFallback } from './core/qr-code.js';
+import { deriveRoomConnectionFlow } from './network/room-flow.js';
 
 const element = id => document.getElementById(id);
 let room;
@@ -12,15 +13,76 @@ let scanner;
 let stopScannerFallback;
 let busy = false;
 let outgoingExchange;
+let selectedRole = null;
+let invitationNumber = 0;
+let answerAccepted = false;
 const showError = error => {
     element('room-error').textContent = error?.message || String(error || 'Unable to complete this action.');
     element('room-error').hidden = false;
 };
 const showProgress = text => { element('room-progress').textContent = text; };
 
+/** Show only the next steps for the chosen role and the current invitation. */
+function renderConnectionFlow() {
+    const connectedCount = room?.connectedPeers().length || 0;
+    const flow = deriveRoomConnectionFlow({ role: selectedRole, hasRoom: Boolean(room),
+        exchangeType: outgoingExchange?.type || null, answerAccepted,
+        connectedCount, topology: room?.topology || 'star' });
+    const sections = {
+        'room-role-choice': flow.showChoice, 'room-connection-panel': !flow.showChoice,
+        'room-settings': flow.showSettings, 'room-create-actions': flow.showCreate,
+        'room-host-actions': flow.showInvite, 'room-receive-panel': flow.showReceive,
+        'room-share-panel': flow.showShare, 'room-cancel-actions': flow.showCancel,
+        'room-members-panel': flow.showMembers, 'room-chat-panel': flow.showChat,
+        'room-topology-options': flow.showTopology
+    };
+    for (const [id, visible] of Object.entries(sections)) element(id).hidden = !visible;
+    element('room-connection-panel').dataset.phase = flow.phase;
+    element('setup-heading').textContent = flow.hosting ? 'You are creating / hosting this room' : 'You are joining a room';
+    const summaries = {
+        'host-setup': '1. Set a passphrase, then create your room and its first invitation.',
+        'join-setup': '1. Enter the host’s passphrase. 2. Apply their invitation below.',
+        'host-invitation': `Invitation ${invitationNumber}: send it to ONE person, then apply only that person’s response below.`,
+        connecting: `Invitation ${invitationNumber}: response accepted. Waiting for this person to connect.`,
+        'join-response': '2. Send your response to the host. Keep this tab open while they apply it.',
+        'host-ready': connectedCount ? 'Your room is connected. Invite another person when you are ready.' : 'Your room is ready. Create an invitation for one person.',
+        joined: connectedCount ? 'You have joined the room. You can chat below.' : 'Waiting for the host connection. Keep this tab open.'
+    };
+    element('room-step-summary').textContent = summaries[flow.phase] || '';
+    if (flow.phase === 'host-ready' && room?.topology === 'mesh')
+        element('room-step-summary').textContent = 'Your mesh room is connected. All participants communicate directly; new invitations require a new room.';
+    element('room-password-help').textContent = flow.hosting ? 'Choose a passphrase and tell your guests separately from the invitation.' : 'Use the passphrase the host gave you.';
+    element('room-receive-heading').textContent = flow.hosting ? `2. Receive the response for Invitation ${invitationNumber}` : 'Apply the host’s invitation';
+    element('room-incoming-label').textContent = flow.hosting ? `Response to Invitation ${invitationNumber} only` : 'Host’s invitation code';
+    element('use-room-token').textContent = flow.hosting ? 'Connect this person' : 'Join using this invitation';
+    element('room-code-help').textContent = flow.hosting
+        ? 'Only the response to the invitation above is accepted here. A response from a cancelled or different invitation will be rejected.'
+        : 'Paste the invitation, load its code file, or scan it. After it is accepted, you will get a response to send back to the host.';
+    element('room-share-title').textContent = flow.hosting ? `1. Send Invitation ${invitationNumber} to one person` : '2. Send your response back to the host';
+    element('room-share-help').textContent = flow.hosting
+        ? 'This code and QR are for one person, not the whole group. Finish or cancel this invitation before creating another.'
+        : 'Send this response to the host who invited you. They must apply it in their original room tab.';
+    element('room-password').disabled = busy;
+    element('room-network').disabled = busy || Boolean(room);
+    element('create-room').disabled = busy || Boolean(room);
+    element('use-room-token').disabled = busy;
+    element('room-chat-form').querySelectorAll('input, button, select').forEach(control => { control.disabled = !connectedCount; });
+    element('room-connection-panel').closest('.workspace').classList.toggle('room-setup-only', !flow.showChat);
+}
+
+function selectRoomRole(role) {
+    if (room || busy) return;
+    selectedRole = role;
+    element('room-error').hidden = true;
+    renderConnectionFlow();
+    showProgress(role === 'host' ? 'You will host this room. Create the room to generate an invitation.' : 'You will join someone else’s room. Enter the host’s passphrase and invitation.');
+    element('room-password').focus();
+}
+
 /** Erase consumed signaling data while leaving the current room alive. */
 function clearOutgoingExchange() {
     outgoingExchange = null;
+    answerAccepted = false;
     element('room-outgoing').value = ''; element('room-outgoing-link').value = '';
     element('room-qr').replaceChildren(); element('room-large-qr').replaceChildren();
     element('room-share-panel').hidden = true;
@@ -34,7 +96,7 @@ function registerConnectedExchange(state) {
     clearOutgoingExchange();
     // A user may already be pasting the next code; never erase that newer input.
     showProgress(state.selfId === state.hostId
-        ? `Participant ${peerId} connected. Choose Invite next peer; the response box is ready for their code.`
+        ? `Invitation ${invitationNumber} completed. Participant ${peerId} connected. Choose Invite next person to get a fresh invitation and empty response box.`
         : 'Connected to the room. Your response code has been applied by the host. You can chat now.');
 }
 
@@ -67,8 +129,8 @@ function renderRoomState(state) {
         if (id !== state.selfId) element('room-recipient').append(new Option(id, id));
     }
     element('room-recipient').value = previous;
-    element('room-incoming-label').textContent = host ? 'Next participant’s response code' : 'Received invitation or response code';
     registerConnectedExchange(state);
+    renderConnectionFlow();
 }
 
 function initializeRoom(selfId, hostId) {
@@ -99,9 +161,13 @@ async function displayEncryptedExchange(type, payload) {
 }
 
 async function inviteNextPeer() {
+    element('room-incoming').value = '';
+    answerAccepted = false;
+    showProgress('Preparing a fresh invitation for one person…');
     const invitation = await room.createInvitation(element('room-password').value);
+    invitationNumber++;
     await displayEncryptedExchange('offer', invitation);
-    showProgress('Invitation ready. Send the code to one peer, then paste their response in the empty box above.');
+    showProgress(`Invitation ${invitationNumber} ready. Send it to one person; receive that person’s response below. This QR cannot invite multiple people.`);
 }
 
 async function useReceivedExchange() {
@@ -111,12 +177,20 @@ async function useReceivedExchange() {
     const type = identifyRoomExchangeType(data, hint);
     if (type === 'answer') {
         if (!room) throw new Error('Paste this reply in the original host tab.');
+        if (selectedRole !== 'host' || outgoingExchange?.type !== 'offer' || outgoingExchange.remoteId !== data.peerId || answerAccepted)
+            throw new Error(`This response does not match the current invitation. Use only the response to Invitation ${invitationNumber}, or ask the person to use a fresh invitation.`);
         await room.acceptReply(data, element('room-password').value);
+        answerAccepted = true;
         if (element('room-incoming').value === received) element('room-incoming').value = '';
         showProgress(`Response accepted for ${data.peerId}. Establishing connection…`);
         return;
     }
-    if (room) throw new Error('Leave the current room before accepting an invitation.');
+    if (selectedRole === 'host') throw new Error(room
+        ? `This is an invitation code. Ask the person for their response to Invitation ${invitationNumber}; your room is still open.`
+        : 'You chose to create a room. Start over and choose Join a room to use someone else’s invitation.');
+    if (room) throw new Error('You have already joined a room. Stay in this tab and send your response to the host.');
+    selectedRole = 'join';
+    showProgress('Invitation verified. Preparing your response code…');
     initializeRoom(data.peerId, data.hostId);
     try {
         const reply = await room.answerInvitation(data, element('room-password').value);
@@ -133,8 +207,9 @@ async function useReceivedExchange() {
 /** All receiving methods feed the current instance; none navigate to the received URL. */
 async function receiveExchangeText(text) {
     element('room-incoming').value = text;
+    if (!selectedRole && !room) { selectedRole = 'join'; renderConnectionFlow(); }
     if (element('room-password').value.trim()) return useReceivedExchange();
-    showProgress('Code received. Enter the shared passphrase, then choose Apply received code.');
+    showProgress('Code received. Enter the shared passphrase, then choose Join using this invitation.');
 }
 
 /** Clipboard denial retains a selectable code and gives a manual-copy fallback. */
@@ -150,17 +225,24 @@ async function copyExchangeText(id) {
 async function runRoomOperation(operation) {
     if (busy) return;
     busy = true; element('room-error').hidden = true;
+    renderConnectionFlow();
     try { await operation(); } catch (error) { showError(error); }
-    finally { busy = false; room?.publishState(); }
+    finally { busy = false; room?.publishState(); renderConnectionFlow(); }
 }
 
+element('choose-create-room').onclick = () => selectRoomRole('host');
+element('choose-join-room').onclick = () => selectRoomRole('join');
+
 element('create-room').onclick = () => runRoomOperation(async () => {
+    selectedRole = 'host';
     if (!element('room-password').value.trim()) throw new Error('Enter a shared passphrase.');
     const id = crypto.randomUUID(); initializeRoom(id, id); await inviteNextPeer();
 });
 element('invite-peer').onclick = () => runRoomOperation(inviteNextPeer);
 element('cancel-room-invite').onclick = () => runRoomOperation(() => {
-    room?.cancelPendingInvitations(); clearOutgoingExchange(); showProgress('Pending invitation cancelled. You can invite another peer.');
+    if (outgoingExchange?.type === 'offer') room?.removePeer(outgoingExchange.remoteId);
+    clearOutgoingExchange(); element('room-incoming').value = '';
+    showProgress('Invitation cancelled. Its code and response are no longer valid. Choose Invite next person for a fresh invitation.');
 });
 element('use-room-token').onclick = () => runRoomOperation(useReceivedExchange);
 element('enable-mesh').onclick = () => runRoomOperation(() => room.enableMesh());
@@ -255,4 +337,5 @@ function captureIncomingRoomLink() {
 window.addEventListener('hashchange', captureIncomingRoomLink);
 document.addEventListener('visibilitychange', () => { if (document.hidden) closeRoomScanner().catch(showError); });
 captureIncomingRoomLink();
+renderConnectionFlow();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(showError);
